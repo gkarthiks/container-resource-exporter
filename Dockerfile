@@ -19,7 +19,7 @@ RUN set -x && \
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build  -o /cr-exporter
 
 FROM scratch
-
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /cr-exporter .
 
 EXPOSE 9000
