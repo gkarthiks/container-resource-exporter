@@ -4,6 +4,8 @@ FROM golang:1.12-alpine as builder
 WORKDIR /go/src/github.com/gkarthiks/container-resource-exporter
 COPY container_resource_exporter.go .
 
+RUN apk update && apk add git ca-certificates && rm -rf /var/cache/apk/*
+
 #RUN go get -v -t  .
 RUN set -x && \
     go get github.com/sirupsen/logrus && \  
