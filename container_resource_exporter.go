@@ -2,12 +2,10 @@ package main
 
 import (
 	_ "expvar"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"sync"
 
@@ -18,7 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	v1 "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/rest"
 	metricsTypes "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	metrics "k8s.io/metrics/pkg/client/clientset/versioned"
 )
@@ -60,22 +58,22 @@ func init() {
 	}
 
 	// uncomment below, if running outside cluster
-	if home := homeDir(); home != "" {
-		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	} else {
-		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
-	}
+	// if home := homeDir(); home != "" {
+	// 	kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+	// } else {
+	// 	kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+	// }
 
-	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
-	if err != nil {
-		panic(err.Error())
-	}
-
-	// uncomment below, if running inside cluster
-	// config, err := rest.InClusterConfig()
+	// config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
 	// if err != nil {
 	// 	panic(err.Error())
 	// }
+
+	// if running inside cluster
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		panic(err.Error())
+	}
 
 	// k8s core api client
 	clientset, err = kubernetes.NewForConfig(config)
@@ -283,9 +281,9 @@ func setPodCount(podCountsNamespace chan map[string]interface{}) {
 }
 
 // Uncomment if running outside the cluster {fetches the local kubeconfig}
-func homeDir() string {
-	if h := os.Getenv("HOME"); h != "" {
-		return h
-	}
-	return os.Getenv("USERPROFILE") // windows
-}
+// func homeDir() string {
+// 	if h := os.Getenv("HOME"); h != "" {
+// 		return h
+// 	}
+// 	return os.Getenv("USERPROFILE") // windows
+// }
