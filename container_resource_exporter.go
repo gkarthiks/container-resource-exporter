@@ -240,7 +240,6 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		wg.Add(1)
 		go getPodUsageMetrics(podMetric)
 	}
-	close(podCountNamespace)
 
 	getPosNamespaceCount := func(namespace string, count int) {
 		defer wg.Done()
@@ -252,6 +251,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		go getPosNamespaceCount(namespace, count)
 	}
 	wg.Wait()
+	close(podCountNamespace)
 }
 
 func setPodCount(podCountsNamespace chan map[string]interface{}) {
