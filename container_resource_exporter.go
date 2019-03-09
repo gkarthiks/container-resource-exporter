@@ -22,15 +22,15 @@ import (
 )
 
 var (
-	kubeconfig       *string
-	pods             *corev1.PodList
-	clientset        *v1.Clientset
-	metricClientSet  *metrics.Clientset
-	watchNamespace   string
-	err              error
-	avail            bool
-	podCounts        = make(map[string]int)
-	totalmemoryUsage = make(map[string]float64)
+	kubeconfig        *string
+	pods              *corev1.PodList
+	clientset         *v1.Clientset
+	metricClientSet   *metrics.Clientset
+	watchNamespace    string
+	err               error
+	avail             bool
+	podCounts         = make(map[string]int)
+	podCountsMapMutex = sync.RWMutex{}
 )
 
 // Exporter collects metrics and exports them using
@@ -43,8 +43,6 @@ type Exporter struct {
 	cpuUsage      *prometheus.Desc
 	memoryUsage   *prometheus.Desc
 	totalPods     *prometheus.Desc
-	// totalCPUUsage    *prometheus.Desc
-	// totalMemoryUsage *prometheus.Desc
 }
 
 func init() {
@@ -142,14 +140,6 @@ func NewExporter() *Exporter {
 			"Total pod count in given space",
 			[]string{"namespace"}, nil,
 		),
-		// totalCPUUsage: prometheus.NewDesc("total_cpu_usage",
-		// 	"Total CPU Usage as reported by Metrics API",
-		// 	[]string{"namespace"}, nil,
-		// ),
-		// totalMemoryUsage: prometheus.NewDesc("total_memory_usage",
-		// 	"Total Memory Usage as reported by Metrics API",
-		// 	[]string{"namespace"}, nil,
-		// ),
 	}
 }
 
@@ -164,8 +154,6 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- e.memoryUsage
 
 	ch <- e.totalPods
-	// ch <- e.totalCPUUsage
-	// ch <- e.totalMemoryUsage
 }
 
 //Collect implements required collect function for all promehteus collectors
@@ -181,7 +169,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		logrus.Error(err.Error())
 	}
 
-	podCountNamespace := make(chan map[string]interface{})
+	podCountNamespace := make(chan string)
 
 	getPodDefinedresource := func(pod corev1.Pod) {
 		defer wg.Done()
@@ -198,8 +186,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 			memoryLimitFloat, _ := strconv.ParseFloat(container.Resources.Limits.Memory().AsDec().String(), 64)
 			ch <- prometheus.MustNewConstMetric(e.memoryLimit, prometheus.GaugeValue, memoryLimitFloat, pod.Name, container.Name, pod.Namespace, fmt.Sprintf("%v ", pod.Status.Phase))
 		}
-		// ch <- prometheus.MustNewConstMetric(e.totalPods, prometheus.CounterValue, value, pod.Namespace)
-		podCountNamespace <- map[string]interface{}{pod.Namespace: 1}
+		podCountNamespace <- pod.Namespace
 	}
 
 	for _, pod := range pods.Items {
@@ -221,18 +208,10 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 			cpuQuantityDec := container.Usage.Cpu().AsDec().String()
 			cpuUsageFloat, _ := strconv.ParseFloat(cpuQuantityDec, 64)
 			ch <- prometheus.MustNewConstMetric(e.cpuUsage, prometheus.GaugeValue, cpuUsageFloat, pod.Name, container.Name, pod.Namespace)
-			// totalCPU = totalCPU + cpuUsageFloat
-			// podCountNamespace <- map[string]interface{}{pod.Namespace: totalCPU}
 
 			memoryQuantityDec := container.Usage.Memory().AsDec().String()
 			memoryUsageFloat, _ := strconv.ParseFloat(memoryQuantityDec, 64)
 			ch <- prometheus.MustNewConstMetric(e.memoryUsage, prometheus.GaugeValue, memoryUsageFloat, pod.Name, container.Name, pod.Namespace)
-			// totalMemory = totalMemory + memoryUsageFloat
-			// podCountNamespace <- map[string]interface{}{
-			// 	pod.Namespace: {
-			// 		"memory": totalMemory
-			// 	},
-			// }
 		}
 	}
 
@@ -254,28 +233,16 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	close(podCountNamespace)
 }
 
-func setPodCount(podCountsNamespace chan map[string]interface{}) {
-	for chData := range podCountsNamespace {
-		for namespace, v := range chData {
-			switch t := v.(type) {
-			case int:
-				if count, ok := podCounts[namespace]; ok {
-					count = count + int(t)
-					// logrus.Infof("count == %d", count)
-					podCounts[namespace] = count
-				} else {
-					podCounts[namespace] = int(t)
-				}
-			case float64:
-				if usageVal, ok := totalmemoryUsage[namespace]; ok {
-					usageVal = usageVal + float64(t)
-					totalmemoryUsage[namespace] = usageVal
-				} else {
-					totalmemoryUsage[namespace] = float64(t)
-				}
-			}
+func setPodCount(podCountsNamespace chan string) {
+	for namespace := range podCountsNamespace {
+		podCountsMapMutex.Lock()
+		if count, ok := podCounts[namespace]; ok {
+			count = count + 1
+			podCounts[namespace] = count
+		} else {
+			podCounts[namespace] = 1
 		}
-
+		podCountsMapMutex.Unlock()
 	}
 
 }
