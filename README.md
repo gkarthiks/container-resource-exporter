@@ -1,4 +1,8 @@
 # container-resource-exporter
+![Build Type](https://img.shields.io/docker/cloud/automated/gkarthics/container-resource-exporter.svg)
+![Build Status](https://img.shields.io/docker/cloud/build/gkarthics/container-resource-exporter.svg)
+![License](https://img.shields.io/github/license/gkarthiks/container-resource-exporter.svg)
+![Release](https://img.shields.io/github/tag-date/gkarthiks/container-resource-exporter.svg?color=Orange&label=Latest%20Release)
 
 Container Resource Exporter (CRE) is a simple metrics expoerter which will export the following data in the [Prometheus](https://prometheus.io/) format. This can be utilized to trigger a pro-active alert from the the [Prometheus Alert Manager](https://prometheus.io/docs/alerting/alertmanager).
 
