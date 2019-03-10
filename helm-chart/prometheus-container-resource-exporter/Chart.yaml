@@ -1,0 +1,15 @@
+apiVersion: v1
+appVersion: "1.0"
+description: Prometheus metrics exporter for conatiner resources
+name: prometheus-container-resource-exporter
+version: 0.1.0
+home: https://gkarthiks.github.io/container-resource-exporter/
+sources:
+  - https://github.com/gkarthiks/container-resource-exporter
+keywords:
+  - prometheus
+  - container
+  - resource
+maintainers:
+  - name: gkarthiks
+    email: github.gkarthiks@gmail.com

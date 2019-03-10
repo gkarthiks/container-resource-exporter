@@ -74,7 +74,10 @@ The below sample [Grafana](https://grafana.com/) dashboard will show the sample 
 - A sample pod's CPU Utilization
 - A sample pod's Memory Utilization
 
-![alt](./grafana-dashboard.jpeg)
+![alt](https://github.com/gkarthiks/container-resource-exporter/blob/master/grafana-dashboard.jpeg)
 
 ## Docker Image:
-The docker image ofcan be found [here <img src="./docker-logo.png" width="40" height="40" align="center"/> .](https://cloud.docker.com/repository/docker/gkarthics/container-resource-exporter)
+The docker image can be found [here <img src="./docker-logo.png" width="40" height="40" align="center"/> .](https://cloud.docker.com/repository/docker/gkarthics/container-resource-exporter)
+
+## Helm Chart:
+The helm chart is available [here](./helm-chart) for easy installation.
