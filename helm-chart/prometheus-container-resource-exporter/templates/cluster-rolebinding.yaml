@@ -1,0 +1,19 @@
+{{- if .Values.runScope.cluster -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app: {{ template "prometheus-container-resource-exporter.name" . }}
+    chart: {{ template "prometheus-container-resource-exporter.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+  name: {{ template "prometheus-container-resource-exporter.fullname" . }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ template "prometheus-container-resource-exporter.fullname" . }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "prometheus-container-resource-exporter.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+{{- end -}}
