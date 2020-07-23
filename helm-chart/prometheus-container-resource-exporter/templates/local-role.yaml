@@ -1,4 +1,4 @@
-{{- if .Values.runScope.local -}}
+{{- if and .Values.runScope.local (not .Values.useExistingRole) -}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:

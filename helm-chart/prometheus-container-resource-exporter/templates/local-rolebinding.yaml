@@ -13,12 +13,16 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: {{ template "prometheus-container-resource-exporter.fullname" $ }}
+{{- if (not .Values.useExistingRole) }}
+  name: {{ template "prometheus-container-resource-exporter.fullname" . }}
+{{- else }}
+  name: {{ .Values.useExistingRole }}
+{{- end }}
 subjects:
 - kind: ServiceAccount
   name: {{ template "prometheus-container-resource-exporter.serviceAccountName" $ }}
   namespace: {{ $.Release.Namespace }}
-{{- else -}}
+{{- else }}
 {{- range $.Values.runScope.namespaces }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -34,7 +38,11 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
+{{- if (not $.Values.useExistingRole) }}
   name: {{ template "prometheus-container-resource-exporter.fullname" $ }}
+{{- else }}
+  name: {{ $.Values.useExistingRole }}
+{{- end }}
 subjects:
 - kind: ServiceAccount
   name: {{ template "prometheus-container-resource-exporter.serviceAccountName" $ }}
