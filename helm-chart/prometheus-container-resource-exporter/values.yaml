@@ -5,6 +5,9 @@
 runScope:
   local: true
   cluster: false
+  # add list of namespaces for this instance to collect from - if you have set runScope.local = true
+  # - otherwise it only collects from current namespace
+  namespaces: []
 
 replicaCount: 1
 

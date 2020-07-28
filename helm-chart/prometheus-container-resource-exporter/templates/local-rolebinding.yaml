@@ -1,20 +1,52 @@
 {{- if .Values.runScope.local -}}
+{{- if empty .Values.runScope.namespaces -}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   labels:
-    app: {{ template "prometheus-container-resource-exporter.name" . }}
-    chart: {{ template "prometheus-container-resource-exporter.chart" . }}
-    release: {{ .Release.Name }}
-    heritage: {{ .Release.Service }}
-  name: {{ template "prometheus-container-resource-exporter.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+    app: {{ template "prometheus-container-resource-exporter.name" $ }}
+    chart: {{ template "prometheus-container-resource-exporter.chart" $ }}
+    release: {{ $.Release.Name }}
+    heritage: {{ $.Release.Service }}
+  name: {{ template "prometheus-container-resource-exporter.fullname" $ }}
+  namespace: {{ $.Release.Namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
+{{- if (not .Values.useExistingRole) }}
   name: {{ template "prometheus-container-resource-exporter.fullname" . }}
+{{- else }}
+  name: {{ .Values.useExistingRole }}
+{{- end }}
 subjects:
 - kind: ServiceAccount
-  name: {{ template "prometheus-container-resource-exporter.serviceAccountName" . }}
-  namespace: {{ .Release.Namespace }}
+  name: {{ template "prometheus-container-resource-exporter.serviceAccountName" $ }}
+  namespace: {{ $.Release.Namespace }}
+{{- else }}
+{{- range $.Values.runScope.namespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app: {{ template "prometheus-container-resource-exporter.name" $ }}
+    chart: {{ template "prometheus-container-resource-exporter.chart" $ }}
+    release: {{ $.Release.Name }}
+    heritage: {{ $.Release.Service }}
+  name: {{ template "prometheus-container-resource-exporter.fullname" $ }}
+  namespace: {{ . }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+{{- if (not $.Values.useExistingRole) }}
+  name: {{ template "prometheus-container-resource-exporter.fullname" $ }}
+{{- else }}
+  name: {{ $.Values.useExistingRole }}
+{{- end }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "prometheus-container-resource-exporter.serviceAccountName" $ }}
+  namespace: {{ $.Release.Namespace }}
+{{- end -}}
+{{- end -}}
 {{- end -}}

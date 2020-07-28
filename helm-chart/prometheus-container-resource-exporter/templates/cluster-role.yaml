@@ -1,4 +1,4 @@
-{{- if .Values.runScope.cluster -}}
+{{- if and .Values.runScope.cluster (not .Values.useExistingRole) -}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
