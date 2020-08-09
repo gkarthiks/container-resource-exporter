@@ -21,10 +21,10 @@ import (
 )
 
 var (
-	k8s *discovery.K8s
+	k8s               *discovery.K8s
 	pods              *corev1.PodList
 	watchNamespace    string
-	nsSlice			[]string
+	nsSlice           []string
 	err               error
 	avail             bool
 	podCounts         = make(map[string]int)
