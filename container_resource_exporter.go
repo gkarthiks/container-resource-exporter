@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	_ "expvar"
 	"fmt"
+	discovery "github.com/gkarthiks/k8s-discovery"
 	"io"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,19 +17,14 @@ import (
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	v1 "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	metricsTypes "k8s.io/metrics/pkg/apis/metrics/v1beta1"
-	metrics "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 var (
-	kubeconfig        *string
+	k8s               *discovery.K8s
 	pods              *corev1.PodList
-	clientset         *v1.Clientset
-	metricClientSet   *metrics.Clientset
 	watchNamespace    string
+	nsSlice           []string
 	err               error
 	avail             bool
 	podCounts         = make(map[string]int)
@@ -47,43 +45,20 @@ type Exporter struct {
 
 func init() {
 	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+	k8s, _ = discovery.NewK8s()
 	watchNamespace, avail = os.LookupEnv("WATCH_NAMESPACE")
 	if avail {
 		logrus.Infof("Chosen namespace to scrape: %s", watchNamespace)
+		if strings.Contains(watchNamespace, ",") {
+			splitNamespace := strings.Split(watchNamespace, ",")
+			for _, indNs := range splitNamespace {
+				nsSlice = append(nsSlice, strings.TrimSpace(indNs))
+			}
+		}
 	} else {
 		logrus.Info("No watch namespace provided, defaulting to cluster level")
 		watchNamespace = ""
 	}
-
-	// uncomment below, if running outside cluster
-	// if home := homeDir(); home != "" {
-	// 	kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	// } else {
-	// 	kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
-	// }
-
-	// config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
-	// if err != nil {
-	// 	panic(err.Error())
-	// }
-
-	// if running inside cluster
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		panic(err.Error())
-	}
-
-	// k8s core api client
-	clientset, err = kubernetes.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
-	// k8s metrics api client
-	metricClientSet, err = metrics.NewForConfig(config)
-	if err != nil {
-		panic(err)
-	}
-
 }
 
 func main() {
@@ -102,7 +77,7 @@ func main() {
 	})
 	http.HandleFunc("/healthz", func(rw http.ResponseWriter, r *http.Request) {
 		logrus.Info("Running healthz check")
-		io.WriteString(rw, "Running good")
+		_, _ = io.WriteString(rw, "Running good")
 	})
 	logrus.Info("Serving on port :9000")
 	logrus.Fatal(http.ListenAndServe(":9000", nil))
@@ -164,7 +139,17 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	var wg = sync.WaitGroup{}
 
 	// Polling core API
-	pods, err = clientset.CoreV1().Pods(watchNamespace).List(metav1.ListOptions{})
+	if len(nsSlice) > 0 {
+		var podSlices = &corev1.PodList{}
+		for _, namespace := range nsSlice {
+			logrus.Infof("Currently scrapping the %s namespace", namespace)
+			pods, err = k8s.Clientset.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{})
+			podSlices.Items = append(podSlices.Items, pods.Items...)
+		}
+		pods = podSlices
+	} else {
+		pods, err = k8s.Clientset.CoreV1().Pods(watchNamespace).List(context.Background(), metav1.ListOptions{})
+	}
 	if err != nil {
 		logrus.Error(err.Error())
 	}
@@ -196,7 +181,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 	go setPodCount(podCountNamespace)
 
-	podMetrics, err := metricClientSet.MetricsV1beta1().PodMetricses(watchNamespace).List(metav1.ListOptions{})
+	podMetrics, err := k8s.MetricsClientSet.MetricsV1beta1().PodMetricses(watchNamespace).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		panic(err)
 	}
@@ -247,10 +232,10 @@ func setPodCount(podCountsNamespace chan string) {
 
 }
 
-// Uncomment if running outside the cluster {fetches the local kubeconfig}
-// func homeDir() string {
-// 	if h := os.Getenv("HOME"); h != "" {
-// 		return h
-// 	}
-// 	return os.Getenv("USERPROFILE") // windows
-// }
+//Uncomment if running outside the cluster {fetches the local kubeconfig}
+func homeDir() string {
+	if h := os.Getenv("HOME"); h != "" {
+		return h
+	}
+	return os.Getenv("USERPROFILE") // windows
+}

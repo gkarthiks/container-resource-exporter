@@ -22,10 +22,19 @@ To run the *CRE* in a contained namespace, i.e., watch only particular namespace
 ```yaml
 - env:
     - name: WATCH_NAMESPACE
-        valueFrom:
+      valueFrom:
         fieldRef:
-            fieldPath: metadata.namespace
+          fieldPath: metadata.namespace
 ```
+
+The CRE can also take multiple namespace in a comma separated list. Like the below. Note that the namespaces should be added as the comma spearated string and not individual strings by themselves. 
+
+```yaml
+- env:
+    - name: WATCH_NAMESPACE
+      value: "default, kube-system, reporting"
+```
+
 
 Still, *CRE* will require a *service account* which has access to `list` all the `pods` under `core v1` apiGroup and `metrics` apiGroup.
 
@@ -83,4 +92,4 @@ The below sample [Grafana](https://grafana.com/) dashboard will show the sample 
 The docker image can be found [here <img src="./docker-logo.png" width="40" height="40" align="center"/> .](https://cloud.docker.com/repository/docker/gkarthics/container-resource-exporter)
 
 ## Helm Chart:
-The helm chart is available [here](./helm-chart) for easy installation.
+The helm chart is available [here](https://hub.helm.sh/charts/gkarthiks/prometheus-container-resource-exporter) for easy installation.
