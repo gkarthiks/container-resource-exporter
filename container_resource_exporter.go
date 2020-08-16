@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +24,7 @@ import (
 var (
 	k8s               *discovery.K8s
 	pods              *corev1.PodList
+	podMetrics        *metricsTypes.PodMetricsList
 	watchNamespace    string
 	nsSlice           []string
 	err               error
@@ -152,70 +154,85 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	}
 	if err != nil {
 		logrus.Error(err.Error())
-	}
+	} else if pods != nil && len(pods.Items) > 0 {
+		podCountNamespace := make(chan string)
+		getPodDefinedresource := func(pod corev1.Pod) {
+			defer wg.Done()
+			for _, container := range pod.Spec.Containers {
+				cpuRequestFloat, _ := strconv.ParseFloat(container.Resources.Requests.Cpu().AsDec().String(), 64)
+				ch <- prometheus.MustNewConstMetric(e.cpuRequest, prometheus.GaugeValue, cpuRequestFloat, pod.Name, container.Name, pod.Namespace, fmt.Sprintf("%v ", pod.Status.Phase))
 
-	podCountNamespace := make(chan string)
+				memoryRequestFloat, _ := strconv.ParseFloat(container.Resources.Requests.Memory().AsDec().String(), 64)
+				ch <- prometheus.MustNewConstMetric(e.memoryRequest, prometheus.GaugeValue, memoryRequestFloat, pod.Name, container.Name, pod.Namespace, fmt.Sprintf("%v ", pod.Status.Phase))
 
-	getPodDefinedresource := func(pod corev1.Pod) {
-		defer wg.Done()
-		for _, container := range pod.Spec.Containers {
-			cpuRequestFloat, _ := strconv.ParseFloat(container.Resources.Requests.Cpu().AsDec().String(), 64)
-			ch <- prometheus.MustNewConstMetric(e.cpuRequest, prometheus.GaugeValue, cpuRequestFloat, pod.Name, container.Name, pod.Namespace, fmt.Sprintf("%v ", pod.Status.Phase))
+				cpuLimitFloat, _ := strconv.ParseFloat(container.Resources.Limits.Cpu().AsDec().String(), 64)
+				ch <- prometheus.MustNewConstMetric(e.cpuLimit, prometheus.GaugeValue, cpuLimitFloat, pod.Name, container.Name, pod.Namespace, fmt.Sprintf("%v ", pod.Status.Phase))
 
-			memoryRequestFloat, _ := strconv.ParseFloat(container.Resources.Requests.Memory().AsDec().String(), 64)
-			ch <- prometheus.MustNewConstMetric(e.memoryRequest, prometheus.GaugeValue, memoryRequestFloat, pod.Name, container.Name, pod.Namespace, fmt.Sprintf("%v ", pod.Status.Phase))
-
-			cpuLimitFloat, _ := strconv.ParseFloat(container.Resources.Limits.Cpu().AsDec().String(), 64)
-			ch <- prometheus.MustNewConstMetric(e.cpuLimit, prometheus.GaugeValue, cpuLimitFloat, pod.Name, container.Name, pod.Namespace, fmt.Sprintf("%v ", pod.Status.Phase))
-
-			memoryLimitFloat, _ := strconv.ParseFloat(container.Resources.Limits.Memory().AsDec().String(), 64)
-			ch <- prometheus.MustNewConstMetric(e.memoryLimit, prometheus.GaugeValue, memoryLimitFloat, pod.Name, container.Name, pod.Namespace, fmt.Sprintf("%v ", pod.Status.Phase))
+				memoryLimitFloat, _ := strconv.ParseFloat(container.Resources.Limits.Memory().AsDec().String(), 64)
+				ch <- prometheus.MustNewConstMetric(e.memoryLimit, prometheus.GaugeValue, memoryLimitFloat, pod.Name, container.Name, pod.Namespace, fmt.Sprintf("%v ", pod.Status.Phase))
+			}
+			podCountNamespace <- pod.Namespace
 		}
-		podCountNamespace <- pod.Namespace
-	}
-
-	for _, pod := range pods.Items {
-		wg.Add(1)
-		go getPodDefinedresource(pod)
-	}
-
-	go setPodCount(podCountNamespace)
-
-	podMetrics, err := k8s.MetricsClientSet.MetricsV1beta1().PodMetricses(watchNamespace).List(context.Background(), metav1.ListOptions{})
-	if err != nil {
-		panic(err)
-	}
-	var podMetric metricsTypes.PodMetrics
-
-	getPodUsageMetrics := func(pod metricsTypes.PodMetrics) {
-		defer wg.Done()
-		for _, container := range pod.Containers {
-			cpuQuantityDec := container.Usage.Cpu().AsDec().String()
-			cpuUsageFloat, _ := strconv.ParseFloat(cpuQuantityDec, 64)
-			ch <- prometheus.MustNewConstMetric(e.cpuUsage, prometheus.GaugeValue, cpuUsageFloat, pod.Name, container.Name, pod.Namespace)
-
-			memoryQuantityDec := container.Usage.Memory().AsDec().String()
-			memoryUsageFloat, _ := strconv.ParseFloat(memoryQuantityDec, 64)
-			ch <- prometheus.MustNewConstMetric(e.memoryUsage, prometheus.GaugeValue, memoryUsageFloat, pod.Name, container.Name, pod.Namespace)
+		for _, pod := range pods.Items {
+			wg.Add(1)
+			go getPodDefinedresource(pod)
 		}
-	}
+		go setPodCount(podCountNamespace)
 
-	for _, podMetric = range podMetrics.Items {
-		wg.Add(1)
-		go getPodUsageMetrics(podMetric)
-	}
+		if len(nsSlice) > 0 {
+			var podMetricsSlices = &metricsTypes.PodMetricsList{}
+			for _, namespace := range nsSlice {
+				logrus.Infof("Currently scrapping the %s namespace for metrics", namespace)
+				podMetrics, err = k8s.MetricsClientSet.MetricsV1beta1().PodMetricses(namespace).List(context.Background(), metav1.ListOptions{})
+				podMetricsSlices.Items = append(podMetricsSlices.Items, podMetrics.Items...)
+			}
+			podMetrics = podMetricsSlices
+		} else {
+			logrus.Println("Inside else using watchnamespace")
+			podMetrics, err = k8s.MetricsClientSet.MetricsV1beta1().PodMetricses(watchNamespace).List(context.Background(), metav1.ListOptions{})
+		}
 
-	getPosNamespaceCount := func(namespace string, count int) {
-		defer wg.Done()
-		ch <- prometheus.MustNewConstMetric(e.totalPods, prometheus.CounterValue, float64(count), namespace)
-	}
+		if err != nil {
+			noRBACError := regexp.MustCompile(`.*.metrics.* is forbidden:.* cannot list.* no RBAC policy matched`)
+			if noRBACError.MatchString(err.Error()) {
+				logrus.Fatalf("The service account running this pod doesn't have a matching RBAC to fetch the Metrics, errored out: %v", err.Error())
+			}
+		}
 
-	for namespace, count := range podCounts {
-		wg.Add(1)
-		go getPosNamespaceCount(namespace, count)
+		var podMetric metricsTypes.PodMetrics
+
+		getPodUsageMetrics := func(pod metricsTypes.PodMetrics) {
+			defer wg.Done()
+			for _, container := range pod.Containers {
+				cpuQuantityDec := container.Usage.Cpu().AsDec().String()
+				cpuUsageFloat, _ := strconv.ParseFloat(cpuQuantityDec, 64)
+				ch <- prometheus.MustNewConstMetric(e.cpuUsage, prometheus.GaugeValue, cpuUsageFloat, pod.Name, container.Name, pod.Namespace)
+
+				memoryQuantityDec := container.Usage.Memory().AsDec().String()
+				memoryUsageFloat, _ := strconv.ParseFloat(memoryQuantityDec, 64)
+				ch <- prometheus.MustNewConstMetric(e.memoryUsage, prometheus.GaugeValue, memoryUsageFloat, pod.Name, container.Name, pod.Namespace)
+			}
+		}
+
+		for _, podMetric = range podMetrics.Items {
+			wg.Add(1)
+			go getPodUsageMetrics(podMetric)
+		}
+
+		getPosNamespaceCount := func(namespace string, count int) {
+			defer wg.Done()
+			ch <- prometheus.MustNewConstMetric(e.totalPods, prometheus.CounterValue, float64(count), namespace)
+		}
+
+		for namespace, count := range podCounts {
+			wg.Add(1)
+			go getPosNamespaceCount(namespace, count)
+		}
+		wg.Wait()
+		close(podCountNamespace)
+	} else {
+		logrus.Infoln("No pod was listed to fetch the metrics")
 	}
-	wg.Wait()
-	close(podCountNamespace)
 }
 
 func setPodCount(podCountsNamespace chan string) {
@@ -230,12 +247,4 @@ func setPodCount(podCountsNamespace chan string) {
 		podCountsMapMutex.Unlock()
 	}
 
-}
-
-//Uncomment if running outside the cluster {fetches the local kubeconfig}
-func homeDir() string {
-	if h := os.Getenv("HOME"); h != "" {
-		return h
-	}
-	return os.Getenv("USERPROFILE") // windows
 }
